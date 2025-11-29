@@ -3,13 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/charmbracelet/log"
+	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -34,16 +33,15 @@ var (
 	watchMode    bool
 )
 
-// ...existing code...
 var importCmd = &cobra.Command{
-	Use:     "import [flags]",
-	Short:   "Import AI-generated code blocks",
-	Long:    `Parse code blocks from input and create files. Supports markdown (```) and clipboard.`,
+	Use:   "import [flags]",
+	Short: "Import AI-generated code blocks",
+	Long:  `Parse code blocks from input and create files. Supports markdown fences and clipboard.`,
 	Example: `  goscaffold import --clipboard
-	goscaffold import --input chat.md --git-commit
-	cat output.md | goscaffold import -i -`,
-	Aliases:  []string{"i"},
-	RunE:     runImport,
+  goscaffold import --input chat.md --git-commit
+  cat output.md | goscaffold import -i -`,
+	Aliases: []string{"i"},
+	RunE:    runImport,
 }
 
 func init() {
@@ -54,7 +52,7 @@ func init() {
 	importCmd.Flags().BoolVarP(&interactive, "interactive", "I", false, "Interactive mode")
 	importCmd.Flags().BoolVar(&backupFiles, "backup", viper.GetBool("backup.enabled"), "Create backups")
 	importCmd.Flags().BoolVarP(&watchMode, "watch", "w", false, "Watch file for changes")
-	
+
 	rootCmd.AddCommand(importCmd)
 }
 
@@ -89,7 +87,6 @@ func runImport(cmd *cobra.Command, args []string) error {
 }
 
 func getInput(ctx context.Context) (string, error) {
-	// Priority: clipboard > file > stdin
 	if useClipboard {
 		return clipboard.Read()
 	}
@@ -105,7 +102,6 @@ func getInput(ctx context.Context) (string, error) {
 		return string(data), nil
 	}
 
-	// Auto-detect clipboard
 	if content, _ := clipboard.Read(); content != "" {
 		log.Debug("Using clipboard")
 		return content, nil
@@ -120,7 +116,7 @@ func readStdin() (string, error) {
 		return "", fmt.Errorf("no stdin data")
 	}
 
-	data, err := os.ReadAll(os.Stdin)
+	data, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return "", err
 	}
@@ -143,12 +139,11 @@ func runBatch(ctx context.Context, files []models.File) error {
 	s := stats.New()
 	bm := backup.NewManager(viper.GetString("backup.retention"))
 
-	// Process with concurrency limit
 	g, ctx := errgroup.WithContext(ctx)
 	g.SetLimit(4)
 
 	for _, file := range files {
-		f := file // capture range variable
+		f := file
 		g.Go(func() error {
 			return processFile(ctx, f, s, bm)
 		})
@@ -160,7 +155,6 @@ func runBatch(ctx context.Context, files []models.File) error {
 
 	s.Print()
 
-	// Git commit
 	if gitCommit && s.TotalFiles > 0 {
 		log.Info("Committing to git...")
 		paths := make([]string, len(files))
@@ -177,25 +171,21 @@ func runBatch(ctx context.Context, files []models.File) error {
 }
 
 func processFile(ctx context.Context, file models.File, s *stats.Stats, bm *backup.Manager) error {
-	// Backup
 	if backupFiles {
 		_ = bm.Backup(file.Path)
 	}
 
-	// Ensure directory
 	dir := filepath.Dir(file.Path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("mkdir %s: %w", dir, err)
 	}
 
-	// Validate
 	if v, err := validator.Get(file.Path); err == nil {
 		if err := v.Validate(ctx, file.Path, file.Code); err != nil {
 			log.Warn("Validation warning", "file", file.Path, "error", err)
 		}
 	}
 
-	// Write
 	if err := os.WriteFile(file.Path, []byte(file.Code), 0644); err != nil {
 		return fmt.Errorf("write %s: %w", file.Path, err)
 	}
