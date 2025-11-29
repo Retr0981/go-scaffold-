@@ -60,7 +60,7 @@ func initLogging() {
 		level = log.DebugLevel
 	}
 	if trace {
-		level = log.TraceLevel
+		level = log.DebugLevel // charmbracelet/log does not have TraceLevel
 	}
 
 	log.SetLevel(level)

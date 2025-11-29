@@ -37,7 +37,7 @@ func init() {
 }
 
 func runNew(cmd *cobra.Command, args []string) error {
-	ctx := cmd.Context()
+	// ...existing code...
 	name := args[0]
 	path := filepath.Join(".", name)
 

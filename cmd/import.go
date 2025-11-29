@@ -34,15 +34,16 @@ var (
 	watchMode    bool
 )
 
+// ...existing code...
 var importCmd = &cobra.Command{
-	Use:   "import [flags]",
-	Short: "Import AI-generated code blocks",
-	Long: `Parse code blocks from input and create files. Supports markdown (```) and clipboard.`,
+	Use:     "import [flags]",
+	Short:   "Import AI-generated code blocks",
+	Long:    `Parse code blocks from input and create files. Supports markdown (```) and clipboard.`,
 	Example: `  goscaffold import --clipboard
-  goscaffold import --input chat.md --git-commit
-  cat output.md | goscaffold import -i -`,
-	Aliases: []string{"i"},
-	RunE: runImport,
+	goscaffold import --input chat.md --git-commit
+	cat output.md | goscaffold import -i -`,
+	Aliases:  []string{"i"},
+	RunE:     runImport,
 }
 
 func init() {
