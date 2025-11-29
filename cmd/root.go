@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -16,16 +17,12 @@ var (
 	cfgFile string
 	debug   bool
 	trace   bool
-	version = "dev"
+	version = "1.0.0"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "goscaffold",
-	Short: "Advanced Go project scaffolding with AI integration",
-	Long: `goscaffold is a cross-platform CLI tool that creates project structures 
-and imports AI-generated code with validation, backups, and git integration.
-
-Supports multiple input formats, interactive TUI, and plugin-based validators.`,
+	Use:     "goscaffold",
+	Short:   "Advanced Go project scaffolding with AI integration",
 	Version: version,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		initLogging()
@@ -37,14 +34,14 @@ func Execute() error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle graceful shutdown
+	// Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-sigChan
 		log.Info("Shutting down gracefully...")
 		cancel()
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 		os.Exit(0)
 	}()
 
@@ -68,13 +65,8 @@ func initLogging() {
 
 	log.SetLevel(level)
 	log.SetReportTimestamp(true)
-	log.SetTimeFormat(time.Kitchen)
+	log.SetTimeFormat(time.RFC3339)
 	log.SetPrefix("goscaffold")
-
-	// Colored output based on terminal
-	if !isTerminal() {
-		log.SetFormatter(log.TextFormatter)
-	}
 }
 
 func initConfig() {
@@ -85,32 +77,26 @@ func initConfig() {
 		viper.SetConfigFile(cfgFile)
 	} else {
 		home, err := os.UserHomeDir()
-		cobra.CheckErr(err)
-
-		viper.AddConfigPath(home)
-		viper.AddConfigPath(".")
-		viper.SetConfigType("yaml")
-		viper.SetConfigName(".goscaffold")
+		if err == nil {
+			viper.AddConfigPath(home)
+			viper.AddConfigPath(".")
+			viper.SetConfigType("yaml")
+			viper.SetConfigName(".goscaffold")
+		}
 	}
 
-	// Set defaults
+	// Defaults
 	viper.SetDefault("backup.enabled", true)
 	viper.SetDefault("backup.retention", "7d")
 	viper.SetDefault("git.auto_commit", false)
 	viper.SetDefault("git.default_branch", "main")
 	viper.SetDefault("watch.interval", "5s")
-	viper.SetDefault("ui.theme", "auto")
+	viper.SetDefault("ui.confirm_create", true)
 
 	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+		var configFileNotFoundError viper.ConfigFileNotFoundError
+		if !errors.As(err, &configFileNotFoundError) {
 			log.Warn("Error reading config", "error", err)
 		}
 	}
-
-	log.Debug("Config initialized", "file", viper.ConfigFileUsed())
-}
-
-func isTerminal() bool {
-	fileInfo, err := os.Stdout.Stat()
-	return err == nil && (fileInfo.Mode()&os.ModeCharDevice) != 0
 }

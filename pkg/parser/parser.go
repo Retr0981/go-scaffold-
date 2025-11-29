@@ -1,71 +1,30 @@
 package parser
 
 import (
+	"regexp"
 	"strings"
-
-	"goscaffold/internal/models"
 )
 
-func ParseMultiFormat(content string) []models.File {
-	var files []models.File
-
-	// Try markdown code blocks first
-	files = append(files, parseMarkdown(content)...)
-
-	// Try YAML-style separators
-	if len(files) == 0 {
-		files = append(files, parseYAMLStyle(content)...)
-	}
-
-	return files
+type File struct {
+	Path string
+	Code string
 }
 
-func parseMarkdown(content string) []models.File {
-	var files []models.File
-	lines := strings.Split(content, "\n")
+func Parse(content string) []File {
+	var files []File
 
-	inBlock := false
-	var currentPath string
-	var currentCode strings.Builder
+	// Pattern for: ```go path:filename.go
+	re := regexp.MustCompile("(?s)```(?:[\\w\\+]+)?\\s+path:(\\S+)\\n(.*?)```")
+	matches := re.FindAllStringSubmatch(content, -1)
 
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		if strings.HasPrefix(trimmed, "```") && !inBlock {
-			inBlock = true
-			currentCode.Reset()
-			continue
-		}
-
-		if strings.HasPrefix(trimmed, "```") && inBlock {
-			inBlock = false
-			if currentPath != "" && currentCode.Len() > 0 {
-				files = append(files, models.File{
-					Path: currentPath,
-					Code: strings.TrimSpace(currentCode.String()),
-				})
-			}
-			currentPath = ""
-			continue
-		}
-
-		if inBlock && strings.HasPrefix(trimmed, "//") && strings.Contains(trimmed, "path:") {
-			parts := strings.SplitN(trimmed, "path:", 2)
-			if len(parts) == 2 {
-				currentPath = strings.TrimSpace(parts[1])
-			}
-			continue
-		}
-
-		if inBlock {
-			currentCode.WriteString(line + "\n")
+	for _, match := range matches {
+		if len(match) >= 3 {
+			files = append(files, File{
+				Path: strings.TrimSpace(match[1]),
+				Code: strings.TrimSpace(match[2]),
+			})
 		}
 	}
 
 	return files
-}
-
-func parseYAMLStyle(content string) []models.File {
-	// Implementation for --- separated blocks
-	return nil // Simplified for brevity
 }
